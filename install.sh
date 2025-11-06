@@ -73,8 +73,9 @@ chown -R $USUARIO:$USUARIO /home/$USUARIO/cotesia_logs
 
 echo ""
 echo "🔧 Instalando serviço systemd..."
-SISTEMA_PATH=$(dirname "$(readlink -f "$0")")
-cp $SISTEMA_PATH/systemd/cotesia-http.service /etc/systemd/system/
+# Usa o diretório atual ao invés de tentar detectar
+SISTEMA_PATH="/home/$(logname)/sistemacotesia"
+cp systemd/cotesia-http.service /etc/systemd/system/
 
 # Substitui [USER] pelo usuário atual e o caminho
 sed -i "s/\[USER\]/$USUARIO/g" /etc/systemd/system/cotesia-http.service
