@@ -73,18 +73,20 @@ chown -R $USUARIO:$USUARIO /home/$USUARIO/cotesia_logs
 
 echo ""
 echo "🔧 Instalando serviço systemd..."
-# Usa o diretório atual de trabalho (onde o usuário executou o comando)
-SISTEMA_PATH="$(pwd)"
+# Detecta o caminho real do script
+SCRIPT_PATH="$(realpath "${BASH_SOURCE[0]}")"
+SISTEMA_PATH="$(dirname "$SCRIPT_PATH")"
 
 echo "   Diretório do sistema: $SISTEMA_PATH"
 
-if [ ! -f "systemd/cotesia-http.service" ]; then
+if [ ! -f "$SISTEMA_PATH/systemd/cotesia-http.service" ]; then
     echo "❌ Erro: Arquivo systemd/cotesia-http.service não encontrado!"
-    echo "   Certifique-se de estar no diretório sistemacotesia/"
+    echo "   Procurado em: $SISTEMA_PATH/systemd/cotesia-http.service"
+    ls -la "$SISTEMA_PATH/" 2>/dev/null || echo "   (Diretório não existe)"
     exit 1
 fi
 
-cp systemd/cotesia-http.service /etc/systemd/system/
+cp "$SISTEMA_PATH/systemd/cotesia-http.service" /etc/systemd/system/
 
 # Substitui [USER] pelo usuário atual e o caminho
 sed -i "s/\[USER\]/$USUARIO/g" /etc/systemd/system/cotesia-http.service
