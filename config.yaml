@@ -1,0 +1,35 @@
+# Configuração do Sistema Cotesia
+
+# Configurações de GPS e Voo
+flight:
+  distancia_metros: 25              # Distância entre tubos (metros)
+  tempo_parada: 10                  # Tempo de parada para finalizar (segundos)
+  velocidade_operacao: 5.0          # Velocidade de operação (m/s)
+  velocidade_parada: 1.5            # Velocidade considerada parada (m/s)
+  first_movement_threshold: 5.0     # Velocidade mínima para iniciar voo (m/s)
+
+# Configurações de Precisão GPS
+gps:
+  precisao_minima_satelites: 3      # Mínimo de satélites para iniciar voo
+  pdop_maximo: 6.0                  # PDOP máximo aceitável
+  baudrate: 9600                    # Taxa de comunicação serial
+
+# Configurações de Servos
+servo:
+  gpio_pin1: 12                     # GPIO do servo 1 (BCM)
+  gpio_pin2: 16                     # GPIO do servo 2 (BCM)
+  min_pulse_width_1: 1.32           # Pulso mínimo servo 1 (ms)
+  max_pulse_width_1: 2.0            # Pulso máximo servo 1 (ms)
+  min_pulse_width_2: 1.076          # Pulso mínimo servo 2 (ms)
+  max_pulse_width_2: 1.73           # Pulso máximo servo 2 (ms)
+
+# Configurações de Armazenamento
+storage:
+  pasta_backup: "~/cotesia_backup"  # Pasta de backup local
+  pasta_logs: "~/cotesia_logs"      # Pasta de logs
+
+# Configurações do Servidor HTTP
+server:
+  host: "0.0.0.0"                   # Escuta em todas as interfaces
+  port: 8080                        # Porta do servidor HTTP
+

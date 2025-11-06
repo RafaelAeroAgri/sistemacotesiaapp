@@ -1,0 +1,24 @@
+[Unit]
+Description=Sistema Cotesia HTTP Server
+After=network.target pigpiod.service
+Wants=pigpiod.service
+
+[Service]
+Type=simple
+User=[USER]
+Group=[USER]
+WorkingDirectory=/home/[USER]/sistemacotesia/service
+ExecStart=/usr/bin/python3 /home/[USER]/sistemacotesia/service/http_server.py
+Restart=always
+RestartSec=10
+
+# Variáveis de ambiente
+Environment="PYTHONUNBUFFERED=1"
+
+# Logs
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+
