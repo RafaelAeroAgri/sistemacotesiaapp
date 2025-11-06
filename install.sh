@@ -20,7 +20,7 @@ apt update
 
 echo ""
 echo "📦 Instalando dependências do sistema..."
-apt install -y python3-pip python3-serial python3-gpiozero git build-essential
+apt install -y python3-pip python3-serial python3-gpiozero git build-essential python3-setuptools
 
 echo ""
 echo "📦 Instalando bibliotecas Python via pip..."
@@ -32,18 +32,21 @@ cd /tmp
 rm -rf pigpio
 git clone https://github.com/joan2937/pigpio.git
 cd pigpio
+
+# Compila e instala apenas os binários (sem Python)
 make
-make install
+make install EXCLUDELIB=y
+
+# Instala biblioteca Python do pigpio via pip
+pip3 install pigpio --break-system-packages
+
 cd ~
 
 echo ""
 echo "🔧 Configurando pigpio daemon..."
-systemctl enable pigpiod 2>/dev/null || true
-systemctl start pigpiod 2>/dev/null || true
 
-# Se o serviço systemd não existir, cria um
+# Cria serviço systemd se não existir
 if [ ! -f /etc/systemd/system/pigpiod.service ]; then
-    echo "Criando serviço pigpiod..."
     cat > /etc/systemd/system/pigpiod.service << 'EOF'
 [Unit]
 Description=Daemon required to control GPIO pins via pigpio
@@ -54,10 +57,11 @@ Type=forking
 [Install]
 WantedBy=multi-user.target
 EOF
-    systemctl daemon-reload
-    systemctl enable pigpiod
-    systemctl start pigpiod
 fi
+
+systemctl daemon-reload
+systemctl enable pigpiod
+systemctl start pigpiod
 
 echo ""
 echo "📁 Criando diretórios..."
@@ -69,13 +73,11 @@ chown -R $USUARIO:$USUARIO /home/$USUARIO/cotesia_logs
 
 echo ""
 echo "🔧 Instalando serviço systemd..."
-cp systemd/cotesia-http.service /etc/systemd/system/
+SISTEMA_PATH=$(dirname "$(readlink -f "$0")")
+cp $SISTEMA_PATH/systemd/cotesia-http.service /etc/systemd/system/
 
-# Substitui [USER] pelo usuário atual
+# Substitui [USER] pelo usuário atual e o caminho
 sed -i "s/\[USER\]/$USUARIO/g" /etc/systemd/system/cotesia-http.service
-
-# Obtém o caminho atual do sistemacotesia
-SISTEMA_PATH=$(pwd)
 sed -i "s|/home/\[USER\]/sistemacotesia|$SISTEMA_PATH|g" /etc/systemd/system/cotesia-http.service
 
 systemctl daemon-reload
@@ -98,8 +100,13 @@ echo ""
 echo "Servidor HTTP disponível em: http://10.3.141.1:8080"
 echo "(Configure o hotspot WiFi com IP 10.3.141.1)"
 echo ""
-echo "🔍 Verificando status do serviço..."
+echo "🔍 Verificando status dos serviços..."
 sleep 2
-systemctl status cotesia-http --no-pager
+echo ""
+echo "--- PIGPIO DAEMON ---"
+systemctl status pigpiod --no-pager | head -n 10
+echo ""
+echo "--- COTESIA HTTP ---"
+systemctl status cotesia-http --no-pager | head -n 10
 echo ""
 echo "✅ Se aparecer 'active (running)' acima, está tudo OK!"
