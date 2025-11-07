@@ -29,6 +29,8 @@ class ServoControl:
         self.ultimo_movimento = 0
         self.tempo_minimo_entre_movimentos = 0.5  # segundos
         self.inicializado = False
+        self.angulo_servo1 = -1.0
+        self.angulo_servo2 = -1.0
         
         self._log("ServoControl inicializado (servos não configurados)")
     
@@ -60,25 +62,25 @@ class ServoControl:
             factory = PiGPIOFactory()
             self._log("Factory pigpio criada")
             
-            # SERVO 1: GPIO 12 (pino físico 32)
+            # SERVO 1: GPIO 16 (pino físico 36)
             self.servo1 = Servo(
-                12,
-                pin_factory=factory,
-                min_pulse_width=1.32/1000,   # 1320µs (inicial)
-                max_pulse_width=2.0/1000,    # 2000µs (final)
-                frame_width=20/1000
-            )
-            self._log("Servo1 (GPIO12) criado")
-            
-            # SERVO 2: GPIO 16 (pino físico 36)
-            self.servo2 = Servo(
                 16,
                 pin_factory=factory,
                 min_pulse_width=1.076/1000,  # 1076µs (final - invertido)
                 max_pulse_width=1.73/1000,   # 1730µs (inicial - invertido)
                 frame_width=20/1000
             )
-            self._log("Servo2 (GPIO16) criado")
+            self._log("Servo1 (GPIO16) criado")
+            
+            # SERVO 2: GPIO 12 (pino físico 32)
+            self.servo2 = Servo(
+                12,
+                pin_factory=factory,
+                min_pulse_width=1.32/1000,   # 1320µs (inicial)
+                max_pulse_width=2.0/1000,    # 2000µs (final)
+                frame_width=20/1000
+            )
+            self._log("Servo2 (GPIO12) criado")
             
             # Calibração inicial
             self._log("Calibrando posição inicial dos servos...")
@@ -98,6 +100,8 @@ class ServoControl:
             self.servo2.detach()
             
             self.inicializado = True
+            self.angulo_servo1 = -1.0
+            self.angulo_servo2 = -1.0
             self._log("✅ Servos inicializados e calibrados")
             return True
             
@@ -128,18 +132,24 @@ class ServoControl:
             self._log("Posição inicial: S1=1320µs / S2=1076µs")
             self.servo1.value = -1.00
             self.servo2.value = -1.00
+            self.angulo_servo1 = -1.0
+            self.angulo_servo2 = -1.0
             time.sleep(1.0)
             
             # Movimento 1 - Espelhado
             self._log("Movimento 1: S1 vai (1320→2000) / S2 volta (1076→1730)")
             self.servo1.value = 1.00
             self.servo2.value = 1.00
+            self.angulo_servo1 = 1.0
+            self.angulo_servo2 = 1.0
             time.sleep(2.0)
             
             # Movimento 2 - Espelhado
             self._log("Movimento 2: S1 volta (2000→1320) / S2 vai (1730→1076)")
             self.servo1.value = -1.00
             self.servo2.value = -1.00
+            self.angulo_servo1 = -1.0
+            self.angulo_servo2 = -1.0
             time.sleep(2.0)
             
             # Desativa servos
@@ -173,6 +183,8 @@ class ServoControl:
             self.servo1.detach()
             self.servo2.detach()
             self._log("Servos resetados para posição ESPELHADA")
+            self.angulo_servo1 = -1.0
+            self.angulo_servo2 = -1.0
             return True
         except Exception as e:
             self._log(f"Erro ao resetar: {e}", "error")
@@ -207,11 +219,15 @@ class ServoControl:
             # Vai para posição final
             self.servo1.value = 1.00   # 2000µs
             self.servo2.value = 1.00   # 1730µs
+            self.angulo_servo1 = 1.0
+            self.angulo_servo2 = 1.0
             time.sleep(0.8)
             
             # Volta para posição inicial
             self.servo1.value = -1.00  # 1320µs
             self.servo2.value = -1.00  # 1076µs
+            self.angulo_servo1 = -1.0
+            self.angulo_servo2 = -1.0
             time.sleep(0.5)
             
             # Desativa servos
@@ -236,7 +252,9 @@ class ServoControl:
         return {
             'estado': self.estado,
             'ativacoes': self.contador_ativacoes,
-            'inicializado': self.inicializado
+            'inicializado': self.inicializado,
+            'servo1_angle': self.angulo_servo1,
+            'servo2_angle': self.angulo_servo2,
         }
     
     def limpar(self):
@@ -249,6 +267,53 @@ class ServoControl:
             self._log("GPIO limpo")
         except Exception as e:
             self._log(f"Erro ao limpar GPIO: {e}", "error")
+    
+    def ajustar_servo(self, servo_numero, valor):
+        """
+        Ajusta manualmente o ângulo de um servo específico.
+        
+        Args:
+            servo_numero (int): 1 ou 2 indicando o servo a ajustar
+            valor (float): valor normalizado entre -1.0 e 1.0
+        
+        Returns:
+            bool: True se movimento executado
+        """
+        if not self._validar_servos():
+            return False
+        
+        if servo_numero not in (1, 2):
+            self._log(f"Número de servo inválido: {servo_numero}", "warning")
+            return False
+        
+        try:
+            valor = float(valor)
+        except (TypeError, ValueError):
+            self._log(f"Valor inválido para ajuste manual: {valor}", "warning")
+            return False
+        
+        valor = max(-1.0, min(1.0, valor))
+        alvo = self.servo1 if servo_numero == 1 else self.servo2
+        
+        try:
+            self.estado = "ON"
+            self._log(f"Ajustando servo {servo_numero} para valor {valor:.2f}")
+            alvo.value = valor
+            time.sleep(0.4)
+            alvo.detach()
+            
+            if servo_numero == 1:
+                self.angulo_servo1 = valor
+            else:
+                self.angulo_servo2 = valor
+            
+            return True
+        except Exception as e:
+            self._log(f"Erro ao ajustar servo {servo_numero}: {e}", "error")
+            self._tentar_detach()
+            return False
+        finally:
+            self.estado = "OFF"
     
     def _validar_servos(self):
         """Valida se servos estão inicializados"""

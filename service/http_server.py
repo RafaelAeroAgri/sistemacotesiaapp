@@ -90,6 +90,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         'POST /config': 'Atualiza configurações',
                         'POST /servo/test': 'Teste de servos',
                         'POST /servo/reset': 'Reset servos',
+                        'POST /servo/angle': 'Ajuste manual de servo',
                         'POST /system/boot': 'Inicializa GPIO',
                         'POST /system/reset': 'Reset completo',
                         'POST /flight/start': 'Inicia voo',
@@ -134,6 +135,39 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'ok', 'message': 'Servos resetados'})
                 else:
                     self.send_json({'status': 'error', 'message': 'Falha no reset'}, 500)
+            
+            # SERVO/ANGLE - Ajuste manual de servo
+            elif path == '/servo/angle':
+                servo = data.get('servo')
+                valor = data.get('value')
+                
+                if valor is None and 'degrees' in data:
+                    try:
+                        graus = float(data.get('degrees'))
+                        valor = (graus / 90.0) - 1.0
+                    except (TypeError, ValueError):
+                        valor = None
+                
+                try:
+                    servo = int(servo)
+                except (TypeError, ValueError):
+                    servo = None
+                
+                if servo in (1, 2) and valor is not None:
+                    success = self.servo_control.ajustar_servo(servo, valor)
+                    if success:
+                        estado = self.servo_control.get_estado()
+                        self.send_json({
+                            'status': 'ok',
+                            'message': f'Servo {servo} ajustado',
+                            'servo_estado': estado
+                        })
+                    else:
+                        self.send_json({'status': 'error', 'message': 'Falha ao ajustar servo'}, 500)
+                else:
+                    self.send_json(
+                        {'status': 'error', 'message': 'Informe servo (1 ou 2) e value'}, 400
+                    )
             
             # SYSTEM/BOOT - Inicializa GPIO
             elif path == '/system/boot':
