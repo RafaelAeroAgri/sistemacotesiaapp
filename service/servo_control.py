@@ -62,9 +62,9 @@ class ServoControl:
             factory = PiGPIOFactory()
             self._log("Factory pigpio criada")
             
-            # SERVO 1: GPIO 16 (pino físico 36)
+            # SERVO 1: GPIO 12 (pino físico 32)
             self.servo1 = Servo(
-                16,
+                12,
                 pin_factory=factory,
                 min_pulse_width=1.076/1000,  # 1076µs (final - invertido)
                 max_pulse_width=1.73/1000,   # 1730µs (inicial - invertido)
@@ -72,9 +72,9 @@ class ServoControl:
             )
             self._log("Servo1 (GPIO16) criado")
             
-            # SERVO 2: GPIO 12 (pino físico 32)
+            # SERVO 2: GPIO 16 (pino físico 36)
             self.servo2 = Servo(
-                12,
+                16,
                 pin_factory=factory,
                 min_pulse_width=1.32/1000,   # 1320µs (inicial)
                 max_pulse_width=2.0/1000,    # 2000µs (final)
