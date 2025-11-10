@@ -60,6 +60,11 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
             elif path == '/config':
                 config = self.gps_control.get_config()
                 self.send_json({'status': 'ok', 'config': config})
+
+            # SERVO/CALIBRATION - Calibração atual
+            elif path == '/servo/calibration':
+                calibration = self.servo_control.get_calibration()
+                self.send_json({'status': 'ok', 'calibration': calibration})
             
             # FLIGHTS/LIST - Lista todos os voos
             elif path == '/flights/list':
@@ -91,6 +96,8 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         'POST /servo/test': 'Teste de servos',
                         'POST /servo/reset': 'Reset servos',
                         'POST /servo/angle': 'Ajuste manual de servo',
+                        'GET /servo/calibration': 'Obtém calibração',
+                        'POST /servo/calibration': 'Atualiza calibração',
                         'POST /system/boot': 'Inicializa GPIO',
                         'POST /system/reset': 'Reset completo',
                         'POST /flight/start': 'Inicia voo',
@@ -168,6 +175,14 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json(
                         {'status': 'error', 'message': 'Informe servo (1 ou 2) e value'}, 400
                     )
+
+            # SERVO/CALIBRATION - Atualiza calibração
+            elif path == '/servo/calibration':
+                success = self.servo_control.set_calibration(data)
+                if success:
+                    self.send_json({'status': 'ok', 'message': 'Calibração atualizada'})
+                else:
+                    self.send_json({'status': 'error', 'message': 'Falha ao atualizar calibração'}, 500)
             
             # SYSTEM/BOOT - Inicializa GPIO
             elif path == '/system/boot':

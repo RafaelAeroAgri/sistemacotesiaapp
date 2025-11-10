@@ -7,6 +7,7 @@ Controla 2 servos espelhados usando gpiozero com pigpio
 
 import time
 import os
+import json
 from gpiozero import Servo
 from gpiozero.pins.pigpio import PiGPIOFactory
 
@@ -31,6 +32,16 @@ class ServoControl:
         self.inicializado = False
         self.angulo_servo1 = -1.0
         self.angulo_servo2 = -1.0
+
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        self.calibration_file = os.path.join(base_dir, 'servo_calibration.json')
+        self.calibration = {
+            'servo1': {'min': -1.0, 'max': 1.0},
+            'servo2': {'min': -1.0, 'max': 1.0},
+        }
+        self._load_calibration()
+        self.angulo_servo1 = self.calibration['servo1']['min']
+        self.angulo_servo2 = self.calibration['servo2']['min']
         
         self._log("ServoControl inicializado (servos não configurados)")
     
@@ -91,8 +102,8 @@ class ServoControl:
             time.sleep(0.3)
             
             # Posição inicial espelhada
-            self.servo1.value = -1.00  # 1320µs (inicial)
-            self.servo2.value = -1.00  # 1076µs (final - espelhado)
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
             time.sleep(0.5)
             
             # Desliga PWM
@@ -100,8 +111,8 @@ class ServoControl:
             self.servo2.detach()
             
             self.inicializado = True
-            self.angulo_servo1 = -1.0
-            self.angulo_servo2 = -1.0
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
             self._log("✅ Servos inicializados e calibrados")
             return True
             
@@ -130,26 +141,26 @@ class ServoControl:
             
             # Posição inicial espelhada
             self._log("Posição inicial: S1=1320µs / S2=1076µs")
-            self.servo1.value = -1.00
-            self.servo2.value = -1.00
-            self.angulo_servo1 = -1.0
-            self.angulo_servo2 = -1.0
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
             time.sleep(1.0)
             
             # Movimento 1 - Espelhado
             self._log("Movimento 1: S1 vai (1320→2000) / S2 volta (1076→1730)")
-            self.servo1.value = 1.00
-            self.servo2.value = 1.00
-            self.angulo_servo1 = 1.0
-            self.angulo_servo2 = 1.0
+            self.servo1.value = self.calibration['servo1']['max']
+            self.servo2.value = self.calibration['servo2']['max']
+            self.angulo_servo1 = self.calibration['servo1']['max']
+            self.angulo_servo2 = self.calibration['servo2']['max']
             time.sleep(2.0)
             
             # Movimento 2 - Espelhado
             self._log("Movimento 2: S1 volta (2000→1320) / S2 vai (1730→1076)")
-            self.servo1.value = -1.00
-            self.servo2.value = -1.00
-            self.angulo_servo1 = -1.0
-            self.angulo_servo2 = -1.0
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
             time.sleep(2.0)
             
             # Desativa servos
@@ -177,14 +188,14 @@ class ServoControl:
             return False
         
         try:
-            self.servo1.value = -1.00  # 1320µs (inicial)
-            self.servo2.value = -1.00  # 1076µs (final espelhado)
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
             time.sleep(0.5)
             self.servo1.detach()
             self.servo2.detach()
             self._log("Servos resetados para posição ESPELHADA")
-            self.angulo_servo1 = -1.0
-            self.angulo_servo2 = -1.0
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
             return True
         except Exception as e:
             self._log(f"Erro ao resetar: {e}", "error")
@@ -217,17 +228,17 @@ class ServoControl:
             self._log(f"Movimento operação #{self.contador_ativacoes + 1}")
             
             # Vai para posição final
-            self.servo1.value = 1.00   # 2000µs
-            self.servo2.value = 1.00   # 1730µs
-            self.angulo_servo1 = 1.0
-            self.angulo_servo2 = 1.0
+            self.servo1.value = self.calibration['servo1']['max']
+            self.servo2.value = self.calibration['servo2']['max']
+            self.angulo_servo1 = self.calibration['servo1']['max']
+            self.angulo_servo2 = self.calibration['servo2']['max']
             time.sleep(0.8)
             
             # Volta para posição inicial
-            self.servo1.value = -1.00  # 1320µs
-            self.servo2.value = -1.00  # 1076µs
-            self.angulo_servo1 = -1.0
-            self.angulo_servo2 = -1.0
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
             time.sleep(0.5)
             
             # Desativa servos
@@ -255,6 +266,7 @@ class ServoControl:
             'inicializado': self.inicializado,
             'servo1_angle': self.angulo_servo1,
             'servo2_angle': self.angulo_servo2,
+            'calibration': self.calibration,
         }
     
     def limpar(self):
@@ -314,6 +326,65 @@ class ServoControl:
             return False
         finally:
             self.estado = "OFF"
+
+    def get_calibration(self):
+        """Retorna a calibração atual dos servos"""
+        return self.calibration
+
+    def set_calibration(self, calibration):
+        """Define nova calibração e persiste em disco"""
+        try:
+            servo1 = calibration.get('servo1', {})
+            servo2 = calibration.get('servo2', {})
+
+            self.calibration['servo1']['min'] = float(servo1.get('min', -1.0))
+            self.calibration['servo1']['max'] = float(servo1.get('max', 1.0))
+            self.calibration['servo2']['min'] = float(servo2.get('min', -1.0))
+            self.calibration['servo2']['max'] = float(servo2.get('max', 1.0))
+
+            self._normalize_calibration()
+            self._save_calibration()
+            self.angulo_servo1 = self.calibration['servo1']['min']
+            self.angulo_servo2 = self.calibration['servo2']['min']
+            self._log(f"Nova calibração aplicada: {self.calibration}")
+            return True
+        except Exception as e:
+            self._log(f"Erro ao definir calibração: {e}", "error")
+            return False
+
+    def _load_calibration(self):
+        """Carrega calibração do arquivo"""
+        try:
+            if os.path.exists(self.calibration_file):
+                with open(self.calibration_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    if isinstance(data, dict):
+                        self.calibration.update(data)
+                        self._normalize_calibration()
+                        self._log(f"Calibração carregada: {self.calibration}")
+                        self.angulo_servo1 = self.calibration['servo1']['min']
+                        self.angulo_servo2 = self.calibration['servo2']['min']
+        except Exception as e:
+            self._log(f"Erro ao carregar calibração: {e}", "warning")
+
+    def _save_calibration(self):
+        """Persiste calibração em arquivo"""
+        try:
+            with open(self.calibration_file, 'w', encoding='utf-8') as f:
+                json.dump(self.calibration, f, indent=2)
+        except Exception as e:
+            self._log(f"Erro ao salvar calibração: {e}", "error")
+
+    def _normalize_calibration(self):
+        """Clampa e organiza os valores de calibração"""
+        for key in ('servo1', 'servo2'):
+            self.calibration[key]['min'] = max(-1.0, min(1.0, float(self.calibration[key]['min'])))
+            self.calibration[key]['max'] = max(-1.0, min(1.0, float(self.calibration[key]['max'])))
+            if self.calibration[key]['min'] > self.calibration[key]['max']:
+                self.calibration[key]['min'], self.calibration[key]['max'] = (
+                    self.calibration[key]['max'],
+                    self.calibration[key]['min'],
+                )
     
     def _validar_servos(self):
         """Valida se servos estão inicializados"""
