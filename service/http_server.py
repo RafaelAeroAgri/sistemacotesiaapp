@@ -40,7 +40,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Processa requisições GET"""
         parsed = urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.rstrip('/') or '/'
         
         try:
             # PING - Teste de conectividade
@@ -119,7 +119,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Processa requisições POST"""
         parsed = urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.rstrip('/') or '/'
         
         try:
             # Lê body
@@ -249,7 +249,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
     def do_DELETE(self):
         """Processa requisições DELETE"""
         parsed = urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.rstrip('/') or '/'
         
         try:
             # DELETE /flights/{numero}
@@ -398,6 +398,8 @@ def main():
     
     # Inicializa controle de servos
     servo_control = ServoControl(logger=logger)
+    # Inicializa GPIO automaticamente sem mover servos
+    servo_control.inicializar_gpio(calibrar=False)
     
     # Inicializa controle de GPS
     config = {

@@ -52,7 +52,7 @@ class ServoControl:
         else:
             print(f"[SERVO] {mensagem}")
     
-    def inicializar_gpio(self):
+    def inicializar_gpio(self, calibrar=True):
         """
         Inicializa GPIO e configura os servos
         
@@ -93,18 +93,24 @@ class ServoControl:
             )
             self._log("Servo2 (GPIO12) criado")
             
-            # Calibração inicial
-            self._log("Calibrando posição inicial dos servos...")
-            
-            # Pequeno movimento de calibração
-            self.servo1.value = 0.00
-            self.servo2.value = 0.00
-            time.sleep(0.3)
-            
-            # Posição inicial espelhada
-            self.servo1.value = self.calibration['servo1']['min']
-            self.servo2.value = self.calibration['servo2']['min']
-            time.sleep(0.5)
+            if calibrar:
+                # Calibração inicial com movimento
+                self._log("Calibrando posição inicial dos servos...")
+                
+                # Pequeno movimento de calibração
+                self.servo1.value = 0.00
+                self.servo2.value = 0.00
+                time.sleep(0.3)
+                
+                # Posição inicial espelhada
+                self.servo1.value = self.calibration['servo1']['min']
+                self.servo2.value = self.calibration['servo2']['min']
+                time.sleep(0.5)
+            else:
+                # Inicialização silenciosa (sem movimentar)
+                self._log("Servos inicializados sem movimento (boot automático)")
+                self.servo1.value = self.calibration['servo1']['min']
+                self.servo2.value = self.calibration['servo2']['min']
             
             # Desliga PWM
             self.servo1.detach()
