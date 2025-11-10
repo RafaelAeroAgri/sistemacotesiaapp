@@ -40,15 +40,17 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         """Processa requisições GET"""
         parsed = urlparse(self.path)
-        path = parsed.path.rstrip('/') or '/'
+        raw_path = parsed.path or '/'
+        path = raw_path.rstrip('/') or '/'
+        path_lower = path.lower()
         
         try:
             # PING - Teste de conectividade
-            if path == '/ping':
+            if path_lower == '/ping':
                 self.send_json({'status': 'ok', 'message': 'PONG'})
             
             # STATUS - Status completo do sistema
-            elif path == '/status':
+            elif path_lower == '/status':
                 status = self.gps_control.get_status()
                 status.update({
                     'servos_estado': self.servo_control.get_estado(),
@@ -57,12 +59,12 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                 self.send_json({'status': 'ok', 'data': status})
             
             # CONFIG - Configurações atuais
-            elif path == '/config':
+            elif path_lower == '/config':
                 config = self.gps_control.get_config()
                 self.send_json({'status': 'ok', 'config': config})
 
             # SERVO/CALIBRATION - Calibração atual
-            elif path == '/servo/calibration':
+            elif path_lower == '/servo/calibration':
                 calibration = self.servo_control.get_calibration()
                 self.send_json({'status': 'ok', 'calibration': calibration})
             
@@ -72,7 +74,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                 self.send_json({'status': 'ok', 'flights': flights})
             
             # FLIGHTS/{numero} - Dados de um voo específico
-            elif path.startswith('/flights/') and len(path.split('/')) == 3:
+            elif path_lower.startswith('/flights/') and len(path.split('/')) == 3:
                 numero = path.split('/')[-1]
                 if numero.isdigit():
                     flight_data = self._obter_dados_voo(int(numero))
@@ -84,7 +86,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Número de voo inválido'}, 400)
             
             # ROOT - Informações da API
-            elif path == '/':
+            elif path_lower == '/':
                 self.send_json({
                     'service': 'Sistema Cotesia HTTP Server',
                     'version': '1.0.0',
@@ -119,7 +121,9 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         """Processa requisições POST"""
         parsed = urlparse(self.path)
-        path = parsed.path.rstrip('/') or '/'
+        raw_path = parsed.path or '/'
+        path = raw_path.rstrip('/') or '/'
+        path_lower = path.lower()
         
         try:
             # Lê body
@@ -128,7 +132,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
             data = json.loads(body) if body else {}
             
             # SERVO/TEST - Teste de servos
-            if path == '/servo/test':
+            if path_lower == '/servo/test':
                 success = self.servo_control.teste()
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Teste executado'})
@@ -136,7 +140,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha no teste'}, 500)
             
             # SERVO/RESET - Reset servos
-            elif path == '/servo/reset':
+            elif path_lower == '/servo/reset':
                 success = self.servo_control.reset()
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Servos resetados'})
@@ -144,7 +148,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha no reset'}, 500)
             
             # SERVO/ANGLE - Ajuste manual de servo
-            elif path == '/servo/angle':
+            elif path_lower == '/servo/angle':
                 servo = data.get('servo')
                 valor = data.get('value')
                 
@@ -177,7 +181,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     )
 
             # SERVO/CALIBRATION - Atualiza calibração
-            elif path == '/servo/calibration':
+            elif path_lower == '/servo/calibration':
                 success = self.servo_control.set_calibration(data)
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Calibração atualizada'})
@@ -185,7 +189,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha ao atualizar calibração'}, 500)
             
             # SYSTEM/BOOT - Inicializa GPIO
-            elif path == '/system/boot':
+            elif path_lower == '/system/boot':
                 if self.servo_control.inicializado:
                     self.send_json({'status': 'ok', 'message': 'Sistema já inicializado'})
                 else:
@@ -196,7 +200,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         self.send_json({'status': 'error', 'message': 'Falha na inicialização'}, 500)
             
             # SYSTEM/RESET - Reset completo
-            elif path == '/system/reset':
+            elif path_lower == '/system/reset':
                 success = self.gps_control.resetar_sistema()
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Sistema resetado'})
@@ -204,7 +208,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha no reset'}, 500)
             
             # FLIGHT/START - Inicia voo
-            elif path == '/flight/start':
+            elif path_lower == '/flight/start':
                 success = self.gps_control.iniciar_voo()
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Voo iniciado'})
@@ -212,7 +216,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Não foi possível iniciar voo'}, 400)
             
             # FLIGHT/STOP - Para voo
-            elif path == '/flight/stop':
+            elif path_lower == '/flight/stop':
                 success = self.gps_control.parar_voo()
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Voo parado'})
@@ -220,7 +224,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha ao parar voo'}, 500)
             
             # FLIGHT/SIMULATE - Inicia simulação
-            elif path == '/flight/simulate':
+            elif path_lower == '/flight/simulate':
                 velocidade_media = data.get('velocidade_media', 12)
                 success = self.gps_control.iniciar_simulacao(velocidade_media)
                 if success:
@@ -229,7 +233,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Não foi possível iniciar simulação'}, 400)
             
             # CONFIG - Atualiza configurações
-            elif path == '/config':
+            elif path_lower == '/config':
                 success = self.gps_control.set_config(data)
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Configurações atualizadas'})
@@ -237,7 +241,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                     self.send_json({'status': 'error', 'message': 'Falha ao atualizar'}, 500)
             
             else:
-                self.send_json({'status': 'error', 'message': 'Endpoint não encontrado'}, 404)
+                self.send_json({'status': 'error', 'message': f'Endpoint não encontrado ({raw_path})'}, 404)
         
         except json.JSONDecodeError:
             self.send_json({'status': 'error', 'message': 'JSON inválido'}, 400)
