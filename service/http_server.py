@@ -219,6 +219,15 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                 else:
                     self.send_json({'status': 'error', 'message': 'Falha ao parar voo'}, 500)
             
+            # FLIGHT/SIMULATE - Inicia simulação
+            elif path == '/flight/simulate':
+                velocidade_media = data.get('velocidade_media', 12)
+                success = self.gps_control.iniciar_simulacao(velocidade_media)
+                if success:
+                    self.send_json({'status': 'ok', 'message': 'Simulação iniciada'})
+                else:
+                    self.send_json({'status': 'error', 'message': 'Não foi possível iniciar simulação'}, 400)
+            
             # CONFIG - Atualiza configurações
             elif path == '/config':
                 success = self.gps_control.set_config(data)

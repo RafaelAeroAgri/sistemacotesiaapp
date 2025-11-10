@@ -79,6 +79,11 @@ class GPSControl:
         self.thread_gps = None
         self.rodando = False
         
+        # Simulação
+        self.modo_simulacao = False
+        self.thread_simulacao = None
+        self.velocidade_media_simulacao = 12
+        
         self._log("GPSControl inicializado")
     
     def _log(self, mensagem, level="info"):
@@ -125,7 +130,8 @@ class GPSControl:
             'tempo_parada_atual': round(self.tempo_parada_atual, 2),
             'numero_voo': self.numero_voo,
             'servos_ativacoes': self.servo_control.contador_ativacoes,
-            'finalizado': self.finalizado
+            'finalizado': self.finalizado,
+            'modo_simulacao': self.modo_simulacao
         }
     
     def get_config(self):
@@ -592,4 +598,117 @@ class GPSControl:
             self._log(f"Relatório gerado: {arquivo}")
         except Exception as e:
             self._log(f"Erro ao gerar relatório: {e}", "error")
+    
+    def iniciar_simulacao(self, velocidade_media=12):
+        """
+        Inicia uma simulação inteligente de voo com 20 tubos
+        
+        Args:
+            velocidade_media: Velocidade média em m/s (padrão: 12)
+        
+        Returns:
+            bool: True se iniciou com sucesso
+        """
+        # Verifica se já está em voo ou simulação
+        if self.ciclo_atual > 0:
+            self._log("Já há um voo/simulação em andamento", "warning")
+            return False
+        
+        # Ativa modo simulação
+        self.modo_simulacao = True
+        self.velocidade_media_simulacao = velocidade_media
+        
+        # Inicia thread de simulação
+        self.thread_simulacao = threading.Thread(
+            target=self._thread_simulacao,
+            daemon=True
+        )
+        self.thread_simulacao.start()
+        
+        self._log(f"Simulação iniciada - Velocidade média: {velocidade_media}m/s (20 tubos)")
+        return True
+    
+    def _thread_simulacao(self):
+        """Thread que simula um voo realista de 20 tubos"""
+        import random
+        
+        try:
+            # Simula GPS conectado com bons satélites
+            self.gps_status = "CONECTADO"
+            self.num_satelites = random.randint(8, 12)
+            self.pdop_atual = random.uniform(1.5, 2.5)
+            self.coordenadas_atuais = "-23.550520,-46.633308"  # Coordenada exemplo
+            
+            # Aguarda um pouco
+            time.sleep(1)
+            
+            # Prepara voo
+            self._preparar_voo()
+            self.ciclo_atual = 1
+            self.estado_sistema = "AGUARDANDO_MOVIMENTO"
+            
+            time.sleep(2)
+            
+            # Simula primeiro movimento (Ciclo 1 → 2)
+            self._log("SIMULAÇÃO: Movimento detectado")
+            self.ciclo_atual = 2
+            self.estado_sistema = "EM_MOVIMENTO"
+            self.ultima_posicao = (-23.550520, -46.633308)
+            self.tempo_inicio_voo = time.time()
+            
+            # Ciclo 3: Operação - 20 tubos
+            self.ciclo_atual = 3
+            self.estado_sistema = "OPERACAO"
+            
+            posicao_alternada = False
+            
+            for tubo in range(20):
+                # Variação inteligente de velocidade (±30% da média)
+                variacao = random.uniform(0.7, 1.3)
+                velocidade_atual = self.velocidade_media_simulacao * variacao
+                self.ultima_velocidade = velocidade_atual
+                
+                # Calcula tempo para percorrer a distância
+                tempo_percurso = self.distancia_metros / velocidade_atual
+                
+                # Simula o percurso gradualmente
+                passos = 10
+                for _ in range(passos):
+                    if not self.modo_simulacao:  # Permite cancelar
+                        return
+                    
+                    time.sleep(tempo_percurso / passos)
+                    self.distancia_acumulada += self.distancia_metros / passos
+                    
+                    # Varia satélites e PDOP levemente
+                    if random.random() < 0.2:
+                        self.num_satelites = max(5, min(12, self.num_satelites + random.choice([-1, 0, 1])))
+                        self.pdop_atual = max(1.5, min(4.0, self.pdop_atual + random.uniform(-0.3, 0.3)))
+                
+                # Chegou na distância - aciona servo
+                self._log(f"SIMULAÇÃO: Tubo {tubo + 1}/20 lançado")
+                nova_lat = self.ultima_posicao[0] + (tubo * 0.0001)
+                nova_lon = self.ultima_posicao[1] + (tubo * 0.0001)
+                nova_posicao = (nova_lat, nova_lon)
+                
+                self._gravar_coordenada(nova_posicao)
+                self.servo_control.mover_operacao(posicao_alternada)
+                posicao_alternada = not posicao_alternada
+                
+                self.ultima_posicao = nova_posicao
+                self.distancia_acumulada = 0
+            
+            # Finaliza voo
+            time.sleep(2)
+            self._log("SIMULAÇÃO: Finalizando voo")
+            self._finalizar_voo()
+            
+            # Desativa modo simulação
+            self.modo_simulacao = False
+            
+        except Exception as e:
+            self._log(f"Erro na simulação: {e}", "error")
+            self.modo_simulacao = False
+            self.ciclo_atual = 0
+            self.estado_sistema = "AGUARDANDO_SATELITES"
 
