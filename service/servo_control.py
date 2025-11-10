@@ -127,6 +127,10 @@ class ServoControl:
             self._log("⚠️ Sistema continuará sem controle de servos", "warning")
             return False
     
+    def inicializar_gpio_silencioso(self):
+        """Inicializa GPIO sem movimentar os servos (modo boot automático)"""
+        return self.inicializar_gpio(calibrar=False)
+    
     def teste(self):
         """
         Executa movimento de teste dos servos

@@ -403,7 +403,7 @@ def main():
     # Inicializa controle de servos
     servo_control = ServoControl(logger=logger)
     # Inicializa GPIO automaticamente sem mover servos
-    servo_control.inicializar_gpio(calibrar=False)
+    servo_control.inicializar_gpio_silencioso()
     
     # Inicializa controle de GPS
     config = {
