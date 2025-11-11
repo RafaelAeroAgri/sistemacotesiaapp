@@ -97,6 +97,8 @@ class GPSControl:
         self.modo_simulacao = False
         self.thread_simulacao = None
         self.velocidade_media_simulacao = 12
+        self._frequencia_gps_hz = self.config.get('gps.frequency_hz', 5)
+        self._frequencias_disponiveis = self.config.get('gps.available_frequencies', list(range(1, 11)))
         
         self._log("GPSControl inicializado")
     
@@ -145,7 +147,8 @@ class GPSControl:
             'numero_voo': self.numero_voo,
             'servos_ativacoes': self.servo_control.contador_ativacoes,
             'finalizado': self.finalizado,
-            'modo_simulacao': self.modo_simulacao
+            'modo_simulacao': self.modo_simulacao,
+            'gps_frequency_hz': self._frequencia_gps_hz,
         }
     
     def get_config(self):
@@ -951,4 +954,32 @@ class GPSControl:
             self.modo_simulacao = False
             self.ciclo_atual = 0
             self.estado_sistema = "AGUARDANDO_SATELITES"
+
+    def get_gps_settings(self):
+        return {
+            'frequency_hz': self._frequencia_gps_hz,
+            'available_frequencies': self._frequencias_disponiveis,
+        }
+
+    def set_gps_frequency(self, hz):
+        hz = max(1, min(10, int(hz)))
+        if hz not in self._frequencias_disponiveis:
+            self._logger.warning('Frequência %s Hz não é suportada; usando mais próxima', hz)
+        self._frequencia_gps_hz = hz
+        self._config_manager.set('gps.frequency_hz', hz)
+        self._config_manager.save()
+        self._reconfigurar_gps()
+        return hz
+
+    def _reconfigurar_gps(self):
+        try:
+            if not self._gps_serial or not self._gps_serial.is_open:
+                self._logger.info('Porta GPS não está aberta; configuração aplicada apenas no arquivo.')
+                return
+            # Exemplo de envio para módulos baseados em UBX
+            self._logger.info('Atualizando GPS para %s Hz', self._frequencia_gps_hz)
+            # TODO: enviar comando específico do módulo GPS. Placeholder:
+            # self._gps_serial.write(b'...')
+        except Exception as exc:
+            self._logger.exception('Falha ao reconfigurar GPS: %s', exc)
 

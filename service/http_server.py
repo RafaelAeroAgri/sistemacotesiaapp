@@ -63,6 +63,17 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                 config = self.gps_control.get_config()
                 self.send_json({'status': 'ok', 'config': config})
 
+            # GPS/SETTINGS - Configuração atual do GPS
+            elif path_lower == '/gps/settings':
+                if hasattr(self.gps_control, 'get_gps_settings'):
+                    settings = self.gps_control.get_gps_settings()
+                    self.send_json({'status': 'ok', 'data': settings})
+                else:
+                    self.send_json(
+                        {'status': 'error', 'message': 'Endpoint não disponível nesta versão'},
+                        501
+                    )
+
             # SERVO/CALIBRATION - Calibração atual
             elif path_lower == '/servo/calibration':
                 if hasattr(self.servo_control, 'get_calibration'):
@@ -265,6 +276,32 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         501
                     )
             
+            # GPS/FREQUENCY - Ajustar frequência do GPS
+            elif path_lower == '/gps/frequency':
+                if not hasattr(self.gps_control, 'set_gps_frequency'):
+                    self.send_json(
+                        {'status': 'error', 'message': 'Endpoint não disponível nesta versão'},
+                        501
+                    )
+                else:
+                    hz = data.get('frequency_hz')
+                    if hz is None:
+                        self.send_json(
+                            {'status': 'error', 'message': 'frequency_hz obrigatório'},
+                            400
+                        )
+                    else:
+                        try:
+                            hz_aplicado = self.gps_control.set_gps_frequency(hz)
+                            self.send_json({'status': 'ok', 'data': {'frequency_hz': hz_aplicado}})
+                        except Exception as exc:
+                            if self.logger:
+                                self.logger.error('Erro ao ajustar frequência do GPS: %s', exc, exc_info=True)
+                            self.send_json(
+                                {'status': 'error', 'message': str(exc)},
+                                500
+                            )
+
             # SYSTEM/BOOT - Inicializa GPIO
             elif path_lower == '/system/boot':
                 if self.servo_control.inicializado:
