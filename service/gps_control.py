@@ -41,6 +41,7 @@ class GPSControl:
         """
         self.servo_control = servo_control
         self.logger = logger
+        self._config_manager = config_manager
         self.config = config_manager.get('gps', {}) # Use config_manager para obter config
         
         # Parâmetros configuráveis
@@ -99,6 +100,8 @@ class GPSControl:
         self.velocidade_media_simulacao = 12
         self._frequencia_gps_hz = self.config.get('frequency_hz', 5)
         self._frequencias_disponiveis = self.config.get('available_frequencies', list(range(1, 11)))
+        self._ultima_mensagem_ts = None
+        self._frequencia_mensurada_hz = 0.0
         self.logger.info('Frequência de GPS configurada: %s Hz', self._frequencia_gps_hz)
         
         self._log("GPSControl inicializado")
@@ -150,6 +153,7 @@ class GPSControl:
             'finalizado': self.finalizado,
             'modo_simulacao': self.modo_simulacao,
             'gps_frequency_hz': self._frequencia_gps_hz,
+            'gps_measured_frequency_hz': round(self._frequencia_mensurada_hz, 2),
         }
     
     def get_config(self):
@@ -293,6 +297,17 @@ class GPSControl:
                             continue
                         
                         ultima_leitura_gps = time.time()
+                        if self._ultima_mensagem_ts is not None:
+                            delta = ultima_leitura_gps - self._ultima_mensagem_ts
+                            if delta > 0:
+                                instante = 1.0 / delta
+                                if self._frequencia_mensurada_hz <= 0:
+                                    self._frequencia_mensurada_hz = instante
+                                else:
+                                    self._frequencia_mensurada_hz = (
+                                        0.8 * self._frequencia_mensurada_hz + 0.2 * instante
+                                    )
+                        self._ultima_mensagem_ts = ultima_leitura_gps
                         
                         if linha.startswith("$GPGGA"):
                             msg = pynmea2.parse(linha)
@@ -960,6 +975,7 @@ class GPSControl:
         return {
             'frequency_hz': self._frequencia_gps_hz,
             'available_frequencies': self._frequencias_disponiveis,
+            'measured_frequency_hz': round(self._frequencia_mensurada_hz, 2),
         }
 
     def set_gps_frequency(self, hz):
