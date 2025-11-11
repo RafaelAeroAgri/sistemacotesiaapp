@@ -30,7 +30,7 @@ from logger import adicionar_log_voo, remover_log_voo
 class GPSControl:
     """Controla o GPS e os ciclos de voo do sistema Cotesia"""
     
-    def __init__(self, servo_control, logger=None, config=None):
+    def __init__(self, servo_control, config_manager, logger):
         """
         Inicializa o controle de GPS
         
@@ -41,7 +41,7 @@ class GPSControl:
         """
         self.servo_control = servo_control
         self.logger = logger
-        self.config = config or {}
+        self.config = config_manager.get('gps', {}) # Use config_manager para obter config
         
         # Parâmetros configuráveis
         self.distancia_metros = self.config.get('distancia_metros', 25)
@@ -97,8 +97,9 @@ class GPSControl:
         self.modo_simulacao = False
         self.thread_simulacao = None
         self.velocidade_media_simulacao = 12
-        self._frequencia_gps_hz = self.config.get('gps.frequency_hz', 5)
-        self._frequencias_disponiveis = self.config.get('gps.available_frequencies', list(range(1, 11)))
+        self._frequencia_gps_hz = self.config.get('frequency_hz', 5)
+        self._frequencias_disponiveis = self.config.get('available_frequencies', list(range(1, 11)))
+        self.logger.info('Frequência de GPS configurada: %s Hz', self._frequencia_gps_hz)
         
         self._log("GPSControl inicializado")
     
@@ -964,22 +965,25 @@ class GPSControl:
     def set_gps_frequency(self, hz):
         hz = max(1, min(10, int(hz)))
         if hz not in self._frequencias_disponiveis:
-            self._logger.warning('Frequência %s Hz não é suportada; usando mais próxima', hz)
+            self.logger.warning('Frequência %s Hz não é suportada; usando mais próxima', hz)
         self._frequencia_gps_hz = hz
-        self._config_manager.set('gps.frequency_hz', hz)
-        self._config_manager.save()
+        if hasattr(self, '_config_manager') and self._config_manager is not None:
+            self._config_manager.set('gps.frequency_hz', hz)
+            self._config_manager.save()
+        else:
+            self.logger.warning('Config manager não disponível; frequência será volátil')
         self._reconfigurar_gps()
         return hz
 
     def _reconfigurar_gps(self):
         try:
-            if not self._gps_serial or not self._gps_serial.is_open:
-                self._logger.info('Porta GPS não está aberta; configuração aplicada apenas no arquivo.')
+            if not self.gps_serial or not self.gps_serial.is_open:
+                self.logger.info('Porta GPS não está aberta; configuração aplicada apenas no arquivo.')
                 return
             # Exemplo de envio para módulos baseados em UBX
-            self._logger.info('Atualizando GPS para %s Hz', self._frequencia_gps_hz)
+            self.logger.info('Atualizando GPS para %s Hz', self._frequencia_gps_hz)
             # TODO: enviar comando específico do módulo GPS. Placeholder:
-            # self._gps_serial.write(b'...')
+            # self.gps_serial.write(b'...')
         except Exception as exc:
-            self._logger.exception('Falha ao reconfigurar GPS: %s', exc)
+            self.logger.exception('Falha ao reconfigurar GPS: %s', exc)
 

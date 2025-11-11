@@ -144,6 +144,8 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         'POST /servo/angle': 'Ajuste manual de servo',
                         'GET /servo/calibration': 'Obtém calibração',
                         'POST /servo/calibration': 'Atualiza calibração',
+                        'GET /gps/settings': 'Configuração atual do GPS',
+                        'POST /gps/frequency': 'Atualiza frequência do GPS',
                         'POST /system/boot': 'Inicializa GPIO',
                         'POST /system/reset': 'Reset completo',
                         'POST /flight/start': 'Inicia voo',
@@ -175,6 +177,8 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
             body = self.rfile.read(content_length).decode('utf-8') if content_length > 0 else '{}'
             data = json.loads(body) if body else {}
             
+            body_data = data
+
             # SERVO/TEST - Teste de servos
             if path_lower == '/servo/test':
                 success = self.servo_control.teste()
@@ -193,12 +197,12 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
             
             # SERVO/ANGLE - Ajuste manual de servo
             elif path_lower == '/servo/angle':
-                servo = data.get('servo')
-                valor = data.get('value')
+                servo = body_data.get('servo')
+                valor = body_data.get('value')
                 
-                if valor is None and 'degrees' in data:
+                if valor is None and 'degrees' in body_data:
                     try:
-                        graus = float(data.get('degrees'))
+                        graus = float(body_data.get('degrees'))
                         valor = (graus / 90.0) - 1.0
                     except (TypeError, ValueError):
                         valor = None
@@ -226,14 +230,20 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
 
             # SERVO/CALIBRATION - Atualiza calibração
             elif path_lower == '/servo/calibration':
-                if hasattr(self.servo_control, 'set_calibration'):
-                    if self.logger:
-                        self.logger.debug("POST /servo/calibration usando set_calibration()")
-                    success = self.servo_control.set_calibration(data)
+                calibration = body_data.get('calibration')
+                if calibration:
+                    if hasattr(self.servo_control, 'set_calibration'):
+                        if self.logger:
+                            self.logger.debug("POST /servo/calibration usando set_calibration()")
+                        success = self.servo_control.set_calibration(calibration)
+                    else:
+                        success = False
+                        if self.logger:
+                            self.logger.warning("POST /servo/calibration: método set_calibration() ausente nesta versão")
                 else:
                     success = False
                     if self.logger:
-                        self.logger.warning("POST /servo/calibration: método set_calibration() ausente nesta versão")
+                        self.logger.warning("POST /servo/calibration: calibração ausente")
                 if success:
                     self.send_json({'status': 'ok', 'message': 'Calibração atualizada'})
                 else:
@@ -284,7 +294,7 @@ class CotesiaHTTPHandler(BaseHTTPRequestHandler):
                         501
                     )
                 else:
-                    hz = data.get('frequency_hz')
+                    hz = body_data.get('frequency_hz')
                     if hz is None:
                         self.send_json(
                             {'status': 'error', 'message': 'frequency_hz obrigatório'},
