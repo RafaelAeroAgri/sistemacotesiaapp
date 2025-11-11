@@ -73,25 +73,25 @@ class ServoControl:
             factory = PiGPIOFactory()
             self._log("Factory pigpio criada")
             
-            # SERVO 1: GPIO 12 (pino físico 32)
+            # SERVO 1: GPIO 16 (pino físico 36)
             self.servo1 = Servo(
-                12,
-                pin_factory=factory,
-                min_pulse_width=1.076/1000,  # 1076µs (final - invertido)
-                max_pulse_width=1.73/1000,   # 1730µs (inicial - invertido)
-                frame_width=20/1000
-            )
-            self._log("Servo1 (GPIO16) criado")
-            
-            # SERVO 2: GPIO 16 (pino físico 36)
-            self.servo2 = Servo(
                 16,
                 pin_factory=factory,
-                min_pulse_width=1.32/1000,   # 1320µs (inicial)
-                max_pulse_width=2.0/1000,    # 2000µs (final)
-                frame_width=20/1000
+                min_pulse_width=1.32 / 1000,   # 1320µs (posição inicial)
+                max_pulse_width=2.0 / 1000,    # 2000µs (posição final)
+                frame_width=20 / 1000
             )
-            self._log("Servo2 (GPIO12) criado")
+            self._log("Servo1 (GPIO16/pino 36) criado")
+            
+            # SERVO 2: GPIO 12 (pino físico 32)
+            self.servo2 = Servo(
+                12,
+                pin_factory=factory,
+                min_pulse_width=1.076 / 1000,  # 1076µs (posição final espelhada)
+                max_pulse_width=1.73 / 1000,   # 1730µs (posição inicial espelhada)
+                frame_width=20 / 1000
+            )
+            self._log("Servo2 (GPIO12/pino 32) criado")
             
             if calibrar:
                 # Calibração inicial com movimento
@@ -130,6 +130,41 @@ class ServoControl:
     def inicializar_gpio_silencioso(self):
         """Inicializa GPIO sem movimentar os servos (modo boot automático)"""
         return self.inicializar_gpio(calibrar=False)
+    
+    def medir_calibracao(self):
+        """
+        Executa uma demonstração dos limites atuais e retorna a calibração.
+        Usado para enviar ao aplicativo os valores realmente configurados.
+        """
+        if not self.inicializado:
+            self.inicializar_gpio(calibrar=False)
+        
+        try:
+            self.estado = "ON"
+            self._log("Iniciando medição de calibração dos servos")
+            
+            # Vai ao mínimo atual
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
+            time.sleep(0.4)
+            
+            # Vai ao máximo atual
+            self.servo1.value = self.calibration['servo1']['max']
+            self.servo2.value = self.calibration['servo2']['max']
+            time.sleep(0.4)
+            
+            # Retorna ao mínimo
+            self.servo1.value = self.calibration['servo1']['min']
+            self.servo2.value = self.calibration['servo2']['min']
+            time.sleep(0.3)
+            
+            return self.calibration
+        except Exception as e:
+            self._log(f"Erro durante medição de calibração: {e}", "error")
+            return self.calibration
+        finally:
+            self._tentar_detach()
+            self.estado = "OFF"
     
     def teste(self):
         """
@@ -234,22 +269,28 @@ class ServoControl:
         try:
             self.estado = "ON"
             
-            # Movimento espelhado sincronizado
-            self._log(f"Movimento operação #{self.contador_ativacoes + 1}")
+            # Movimento espelhado sincronizado com alternância, replicando SistemaCotesia.py
+            self._log(
+                f"Movimento operação #{self.contador_ativacoes + 1} | "
+                f"{'alternado' if posicao_alternada else 'padrão'}"
+            )
             
-            # Vai para posição final
-            self.servo1.value = self.calibration['servo1']['max']
-            self.servo2.value = self.calibration['servo2']['max']
-            self.angulo_servo1 = self.calibration['servo1']['max']
-            self.angulo_servo2 = self.calibration['servo2']['max']
+            alvo_servo1 = (self.calibration['servo1']['max']
+                           if posicao_alternada else self.calibration['servo1']['min'])
+            alvo_servo2 = (self.calibration['servo2']['max']
+                           if posicao_alternada else self.calibration['servo2']['min'])
+
+            self._log(f"Servo1 -> {alvo_servo1:.3f} | Servo2 -> {alvo_servo2:.3f}", "debug")
+
+            self.servo1.value = alvo_servo1
+            time.sleep(0.05)
+            self.servo2.value = alvo_servo2
+
+            self.angulo_servo1 = alvo_servo1
+            self.angulo_servo2 = alvo_servo2
+
+            # Aguarda movimento completar
             time.sleep(0.8)
-            
-            # Volta para posição inicial
-            self.servo1.value = self.calibration['servo1']['min']
-            self.servo2.value = self.calibration['servo2']['min']
-            self.angulo_servo1 = self.calibration['servo1']['min']
-            self.angulo_servo2 = self.calibration['servo2']['min']
-            time.sleep(0.5)
             
             # Desativa servos
             self.servo1.detach()
@@ -361,6 +402,47 @@ class ServoControl:
         except Exception as e:
             self._log(f"Erro ao definir calibração: {e}", "error")
             return False
+    
+    def detectar_limites(self):
+        """
+        Executa um ciclo de movimentação para confirmar os limites atuais
+        e retorna os valores configurados (min/max) de cada servo.
+        """
+        if not self._validar_servos():
+            return None
+        
+        limites = {}
+        
+        try:
+            for servo_num in (1, 2):
+                servo = self.servo1 if servo_num == 1 else self.servo2
+                nome = f"servo{servo_num}"
+                min_val = float(self.calibration[nome]['min'])
+                max_val = float(self.calibration[nome]['max'])
+                
+                self._log(f"[CALIBRAÇÃO] Servo {servo_num}: movendo para mínimo ({min_val:.3f})")
+                servo.value = min_val
+                time.sleep(0.6)
+                
+                self._log(f"[CALIBRAÇÃO] Servo {servo_num}: movendo para máximo ({max_val:.3f})")
+                servo.value = max_val
+                time.sleep(0.6)
+                
+                self._log(f"[CALIBRAÇÃO] Servo {servo_num}: voltando para mínimo")
+                servo.value = min_val
+                time.sleep(0.4)
+                
+                servo.detach()
+                
+                limites[nome] = {'min': min_val, 'max': max_val}
+            
+            self._log(f"[CALIBRAÇÃO] Limites atuais: {limites}")
+            return limites
+        
+        except Exception as e:
+            self._log(f"Erro durante detecção de limites: {e}", "error")
+            self._tentar_detach()
+            return None
 
     def _load_calibration(self):
         """Carrega calibração do arquivo"""

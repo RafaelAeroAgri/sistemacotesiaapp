@@ -122,7 +122,7 @@ def _determinar_pasta_logs():
     return '/tmp'
 
 
-def adicionar_log_voo(logger, pasta_voo, numero_voo):
+def adicionar_log_voo(logger, pasta_voo, numero_voo, nome_arquivo=None):
     """
     Adiciona handler de logging específico para a pasta do voo
     Grava LOG_VOO_X.txt dentro da pasta do voo
@@ -137,7 +137,8 @@ def adicionar_log_voo(logger, pasta_voo, numero_voo):
     """
     try:
         # Cria arquivo de log específico do voo
-        arquivo_log_voo = os.path.join(pasta_voo, f"LOG_VOO_{numero_voo}.txt")
+        nome_arquivo = nome_arquivo or f"LOG_VOO_{numero_voo}.txt"
+        arquivo_log_voo = os.path.join(pasta_voo, nome_arquivo)
         
         # Formato para log do voo (mais limpo para cliente)
         formato_voo = logging.Formatter(
@@ -151,7 +152,7 @@ def adicionar_log_voo(logger, pasta_voo, numero_voo):
             mode='a',
             encoding='utf-8'
         )
-        handler_log_voo.setLevel(logging.INFO)  # Apenas INFO e acima
+        handler_log_voo.setLevel(logging.DEBUG)  # Captura tudo, inclusive HTTP
         handler_log_voo.setFormatter(formato_voo)
         
         # Adiciona ao logger

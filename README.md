@@ -8,8 +8,9 @@ Sistema de liberação de Cotesia para Raspberry Pi 4B sem interface gráfica, c
 - **Controle Remoto**: API HTTP REST completa
 - **Offline-First**: Continua operando sem conexão WiFi durante voo
 - **Auto-Recovery**: Reconecta GPS automaticamente se desconectar
-- **Backup Automático**: Salva todos os dados localmente
+- **Backup Automático Organizado**: Salva dados por Ano/Mês/Dia com numeração sequencial
 - **4 Ciclos de Operação**: Sistema robusto de controle de voo
+- **Logs Criptografáveis**: Possibilidade de gerar log protegido por chave simétrica
 
 ## Requisitos
 
@@ -153,11 +154,18 @@ Lista todos os voos salvos
   "status": "ok",
   "flights": [
     {
-      "numero": 1,
-      "data": "05/11/2025 14:30:00",
-      "tubos": 45,
-      "duracao": "15min 23s",
-      "tamanho_mb": 2.4
+      "id": "2025-11-10-VOO0003",
+      "numero": 3,
+      "numero_diario": 1,
+      "ano": 2025,
+      "mes": 11,
+      "mes_nome": "NOVEMBRO",
+      "dia": 10,
+      "data": "10/11/2025 14:30:00",
+      "tubos": 24,
+      "duracao": "12min 10s",
+      "tamanho_mb": 1.8,
+      "pasta_relativa": "2025/NOVEMBRO/10/VOO_01"
     }
   ]
 }
@@ -172,11 +180,29 @@ Retorna dados completos de um voo (arquivos em base64)
   "status": "ok",
   "flight": {
     "numero": 1,
+    "metadata": {
+      "id": "2025-11-10-VOO0003",
+      "numero_global": 3,
+      "numero_diario": 1,
+      "ano": 2025,
+      "mes_nome": "NOVEMBRO",
+      "dia": 10,
+      "data_humana": "10/11/2025 14:30:00",
+      "log_encrypted": true,
+      "arquivos": {
+        "coordenadas": "VOO01.txt",
+        "percurso": "PERCURSO01.kml",
+        "pontos": "PONTOS01.kml",
+        "relatorio": "DADOS01.txt",
+        "log": "LOG_COMPLETO.txt.enc"
+      }
+    },
     "arquivos": {
       "VOO01.txt": "base64...",
       "PERCURSO01.kml": "base64...",
       "PONTOS01.kml": "base64...",
-      "DADOS01.txt": "base64..."
+      "DADOS01.txt": "base64...",
+      "LOG_COMPLETO.txt.enc": "base64..."
     }
   }
 }
@@ -209,17 +235,55 @@ O sistema opera em 4 ciclos automáticos:
 - Se velocidade < 5 m/s por 10s: FINALIZA
 - Se velocidade volta a >= 5 m/s: continua operando
 
-## Arquivos Gerados
+## Arquivos e Estrutura de Pastas
 
-Para cada voo, o sistema gera:
+Cada voo é salvo em `~/cotesia_backup/ANO/MÊS/DIA/VOO_XX/` contendo:
 
-- `VOO{N}.txt`: Coordenadas (lat, lon)
-- `PERCURSO{N}.kml`: Linha do percurso
-- `PONTOS{N}.kml`: Pontos individuais
-- `DADOS{N}.txt`: Relatório completo
-- `LOG_VOO_{N}.txt`: Log detalhado
+- `VOOXX.txt`: Coordenadas (lat, lon)
+- `PERCURSOXX.kml`: Linha do percurso
+- `PONTOSXX.kml`: Pontos individuais
+- `DADOSXX.txt`: Relatório completo
+- `LOG_COMPLETO.txt` (ou `LOG_COMPLETO.txt.enc` quando criptografado)
+- `metadata.json`: Metadados completos do voo (campos usados pela API)
 
-Salvos em: `~/cotesia_backup/VOO_{N}/`
+Exemplo:
+
+```
+cotesia_backup/
+ └── 2025/
+     └── NOVEMBRO/
+         └── 10/
+             └── VOO_01/
+                 ├── VOO01.txt
+                 ├── PERCURSO01.kml
+                 ├── PONTOS01.kml
+                 ├── DADOS01.txt
+                 ├── LOG_COMPLETO.txt.enc
+                 └── metadata.json
+```
+
+### Criptografia de Logs
+
+- O log é criptografado automaticamente se existir a chave `~/.cotesia_log.key`.
+- Para gerar a chave:
+
+```bash
+python3 - <<'PY'
+from cryptography.fernet import Fernet
+key = Fernet.generate_key()
+open('/home/$USER/.cotesia_log.key', 'wb').write(key)
+print('Chave salva em ~/.cotesia_log.key')
+PY
+```
+
+- Para descriptografar um log:
+
+```bash
+python3 tools/decrypt_log.py LOG_COMPLETO.txt.enc ~/.cotesia_log.key LOG_SAIDA.txt
+```
+
+- Se a biblioteca `cryptography` não estiver instalada ou a chave não existir, o log permanecerá em texto puro.
+- É possível definir outro caminho de chave adicionando `log_key_path: /caminho/para/chave.key` no `config.yaml`.
 
 ## Comandos Úteis
 

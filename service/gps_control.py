@@ -9,13 +9,22 @@ import time
 import math
 import os
 import glob
+import json
 import serial
 import pynmea2
 import threading
+import calendar
 from datetime import datetime
 import pytz
 import simplekml
 import shutil
+
+try:
+    from cryptography.fernet import Fernet
+except ImportError:  # pragma: no cover
+    Fernet = None
+
+from logger import adicionar_log_voo, remover_log_voo
 
 
 class GPSControl:
@@ -64,10 +73,15 @@ class GPSControl:
         self.ultima_verificacao_parada = None
         
         # Voo
-        self.numero_voo = 1
+        self.numero_voo = 0
+        self.numero_voo_diario = 0
         self.pasta_voo_atual = ""
         self.pasta_backup = os.path.join(os.path.expanduser("~"), "cotesia_backup")
         os.makedirs(self.pasta_backup, exist_ok=True)
+        self.metadata_voo = {}
+        self.flight_log_handler = None
+        self.data_voo = None
+        self.data_inicio_voo_iso = None
         
         # Estatísticas
         self.velocidades_registradas = []
@@ -175,6 +189,24 @@ class GPSControl:
         self._finalizar_voo()
         return True
     
+    def _preparar_voo(self):
+        """Configura variáveis iniciais para um novo voo ou simulação"""
+        self._log("Preparando voo (resetando contadores e criando pasta)")
+        self.finalizado = False
+        self.estado_sistema = "PREPARANDO"
+        self.ciclo_atual = 0
+        self.distancia_acumulada = 0.0
+        self.tempo_parada_atual = 0.0
+        self.ultima_verificacao_parada = None
+        self.ultima_posicao = None
+        self.velocidades_registradas = []
+        self.servo_control.contador_ativacoes = 0
+        self.tempo_inicio_voo = time.time()
+        self.data_inicio_voo = datetime.now(
+            pytz.timezone('America/Sao_Paulo')
+        ).strftime('%d/%m/%Y %H:%M:%S')
+        self._criar_pasta_voo()
+    
     def resetar_sistema(self):
         """Reseta o sistema para o estado inicial"""
         self._log("RESETANDO SISTEMA COMPLETO")
@@ -192,6 +224,14 @@ class GPSControl:
         self.data_inicio_voo = None
         self.servo_control.contador_ativacoes = 0
         self.pasta_voo_atual = ""
+        self.metadata_voo = {}
+        self.numero_voo_diario = 0
+        self.data_voo = None
+        self.data_inicio_voo_iso = None
+        
+        if self.logger and self.flight_log_handler:
+            remover_log_voo(self.logger, self.flight_log_handler)
+            self.flight_log_handler = None
         
         # Reset servos
         self.servo_control.reset()
@@ -306,7 +346,10 @@ class GPSControl:
                         self.ciclo_atual = 1
                         self.estado_sistema = "OPERANDO"
                         self.tempo_inicio_voo = time.time()
-                        self.data_inicio_voo = datetime.now(pytz.timezone('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M:%S')
+                        tz = pytz.timezone('America/Sao_Paulo')
+                        self.data_voo = datetime.now(tz)
+                        self.data_inicio_voo = self.data_voo.strftime('%d/%m/%Y %H:%M:%S')
+                        self.data_inicio_voo_iso = self.data_voo.isoformat()
                 
                 # CICLO 1: Aguardando primeira parada
                 elif self.ciclo_atual == 1:
@@ -460,17 +503,70 @@ class GPSControl:
             return 0.0
     
     def _criar_pasta_voo(self):
-        """Cria pasta para o voo atual"""
+        """Cria pasta para o voo atual seguindo estrutura ANO/MÊS/DIA/VOO_XX"""
         try:
-            # Descobre próximo número de voo
-            voos_existentes = glob.glob(os.path.join(self.pasta_backup, "VOO_*"))
-            if voos_existentes:
-                numeros = [int(v.split('_')[-1]) for v in voos_existentes if v.split('_')[-1].isdigit()]
-                self.numero_voo = max(numeros) + 1 if numeros else 1
-            
-            self.pasta_voo_atual = os.path.join(self.pasta_backup, f"VOO_{self.numero_voo}")
+            tz = pytz.timezone('America/Sao_Paulo')
+            data_referencia = self.data_voo or datetime.now(tz)
+            ano = f"{data_referencia.year}"
+            mes_num = data_referencia.month
+            mes_nome = calendar.month_name[mes_num].upper()
+            dia = f"{data_referencia.day:02d}"
+
+            pasta_dia = os.path.join(self.pasta_backup, ano, mes_nome, dia)
+            os.makedirs(pasta_dia, exist_ok=True)
+
+            # Número sequencial do dia
+            existentes = glob.glob(os.path.join(pasta_dia, "VOO_*"))
+            if existentes:
+                numeros_diarios = [
+                    int(os.path.basename(p).split('_')[-1])
+                    for p in existentes
+                    if os.path.basename(p).split('_')[-1].isdigit()
+                ]
+                self.numero_voo_diario = max(numeros_diarios) + 1 if numeros_diarios else 1
+            else:
+                self.numero_voo_diario = 1
+
+            # Número global sequencial
+            self.numero_voo = self._obter_proximo_numero_global()
+
+            pasta_voo_nome = f"VOO_{self.numero_voo_diario:02d}"
+            self.pasta_voo_atual = os.path.join(pasta_dia, pasta_voo_nome)
             os.makedirs(self.pasta_voo_atual, exist_ok=True)
-            
+
+            data_iso = data_referencia.isoformat()
+            data_humana = data_referencia.strftime('%d/%m/%Y %H:%M:%S')
+
+            self.metadata_voo = {
+                "id": f"{ano}-{mes_num:02d}-{dia}-VOO{self.numero_voo:04d}",
+                "numero_global": self.numero_voo,
+                "numero_diario": self.numero_voo_diario,
+                "ano": int(ano),
+                "mes": mes_num,
+                "mes_nome": mes_nome,
+                "dia": int(dia),
+                "data_iso": data_iso,
+                "data_humana": data_humana,
+                "pasta_relativa": os.path.join(ano, mes_nome, dia, pasta_voo_nome),
+                "arquivos": {
+                    "coordenadas": f"VOO{self.numero_voo_diario:02d}.txt",
+                    "percurso": f"PERCURSO{self.numero_voo_diario:02d}.kml",
+                    "pontos": f"PONTOS{self.numero_voo_diario:02d}.kml",
+                    "relatorio": f"DADOS{self.numero_voo_diario:02d}.txt",
+                    "log": "LOG_COMPLETO.txt"
+                },
+                "log_encrypted": False,
+            }
+            self._salvar_metadata_voo()
+
+            if self.logger:
+                self.flight_log_handler = adicionar_log_voo(
+                    self.logger,
+                    self.pasta_voo_atual,
+                    self.metadata_voo["id"],
+                    nome_arquivo=self.metadata_voo["arquivos"]["log"]
+                )
+
             self._log(f"Pasta do voo criada: {self.pasta_voo_atual}")
             return True
         except Exception as e:
@@ -483,7 +579,11 @@ class GPSControl:
             return
         
         try:
-            arquivo = os.path.join(self.pasta_voo_atual, f"VOO{self.numero_voo:02d}.txt")
+            coordenadas_nome = self.metadata_voo.get('arquivos', {}).get(
+                'coordenadas',
+                f"VOO{self.numero_voo_diario:02d}.txt"
+            )
+            arquivo = os.path.join(self.pasta_voo_atual, coordenadas_nome)
             lat, lon = posicao
             
             with open(arquivo, "a") as f:
@@ -508,6 +608,31 @@ class GPSControl:
         self._gerar_kml()
         self._gerar_relatorio()
         
+        # Calcula tamanho total dos arquivos
+        tamanho_total = 0
+        for arquivo in os.listdir(self.pasta_voo_atual or ""):
+            caminho = os.path.join(self.pasta_voo_atual, arquivo)
+            if os.path.isfile(caminho):
+                tamanho_total += os.path.getsize(caminho)
+        
+        tz = pytz.timezone('America/Sao_Paulo')
+        self._salvar_metadata_voo({
+            "finalizado_em": datetime.now(tz).isoformat(),
+            "modo_simulacao": self.modo_simulacao,
+            "tamanho_mb": round(tamanho_total / 1024 / 1024, 2)
+        })
+        
+        if self.logger and self.flight_log_handler:
+            remover_log_voo(self.logger, self.flight_log_handler)
+            self.flight_log_handler = None
+        
+        log_nome = self.metadata_voo.get('arquivos', {}).get('log')
+        if log_nome:
+            caminho_log = os.path.join(self.pasta_voo_atual, log_nome)
+            self._tentar_criptografar_log(caminho_log)
+        
+        self.modo_simulacao = False
+        
         self.estado_sistema = "FINALIZADO"
         self._log("✅ Voo finalizado com sucesso")
     
@@ -517,7 +642,11 @@ class GPSControl:
             return
         
         try:
-            arquivo_txt = os.path.join(self.pasta_voo_atual, f"VOO{self.numero_voo:02d}.txt")
+            coordenadas_nome = self.metadata_voo.get('arquivos', {}).get(
+                'coordenadas',
+                f"VOO{self.numero_voo_diario:02d}.txt"
+            )
+            arquivo_txt = os.path.join(self.pasta_voo_atual, coordenadas_nome)
             
             if not os.path.exists(arquivo_txt):
                 self._log("Arquivo de coordenadas não encontrado", "warning")
@@ -543,7 +672,11 @@ class GPSControl:
             ls.coords = coordenadas
             ls.style.linestyle.width = 3
             ls.style.linestyle.color = simplekml.Color.red
-            arquivo_percurso = os.path.join(self.pasta_voo_atual, f"PERCURSO{self.numero_voo:02d}.kml")
+            percurso_nome = self.metadata_voo.get('arquivos', {}).get(
+                'percurso',
+                f"PERCURSO{self.numero_voo_diario:02d}.kml"
+            )
+            arquivo_percurso = os.path.join(self.pasta_voo_atual, percurso_nome)
             kml_percurso.save(arquivo_percurso)
             
             # KML dos pontos
@@ -552,7 +685,11 @@ class GPSControl:
                 pnt = kml_pontos.newpoint(name="")
                 pnt.coords = [coord]
                 pnt.style.iconstyle.icon.href = 'http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png'
-            arquivo_pontos = os.path.join(self.pasta_voo_atual, f"PONTOS{self.numero_voo:02d}.kml")
+            pontos_nome = self.metadata_voo.get('arquivos', {}).get(
+                'pontos',
+                f"PONTOS{self.numero_voo_diario:02d}.kml"
+            )
+            arquivo_pontos = os.path.join(self.pasta_voo_atual, pontos_nome)
             kml_pontos.save(arquivo_pontos)
             
             self._log(f"Arquivos KML gerados com {len(coordenadas)} pontos")
@@ -565,7 +702,11 @@ class GPSControl:
             return
         
         try:
-            arquivo = os.path.join(self.pasta_voo_atual, f"DADOS{self.numero_voo:02d}.txt")
+            relatorio_nome = self.metadata_voo.get('arquivos', {}).get(
+                'relatorio',
+                f"DADOS{self.numero_voo_diario:02d}.txt"
+            )
+            arquivo = os.path.join(self.pasta_voo_atual, relatorio_nome)
             
             duracao = 0
             if self.tempo_fim_voo and self.tempo_inicio_voo:
@@ -596,8 +737,107 @@ class GPSControl:
                 f.write(f"PDOP médio: {self.pdop_atual:.2f}\n")
             
             self._log(f"Relatório gerado: {arquivo}")
+            
+            minutos = int(duracao // 60)
+            segundos = int(duracao % 60)
+            self._salvar_metadata_voo({
+                "tubos": self.servo_control.contador_ativacoes,
+                "duracao_segundos": duracao,
+                "duracao_humana": f"{minutos}min {segundos}s",
+                "velocidade_media_kmh": round(vel_media * 3.6, 2),
+                "distancia_total_m": self.servo_control.contador_ativacoes * self.distancia_metros
+            })
         except Exception as e:
             self._log(f"Erro ao gerar relatório: {e}", "error")
+    
+    def _obter_proximo_numero_global(self):
+        """Descobre o próximo identificador global de voo"""
+        try:
+            meta_files = glob.glob(
+                os.path.join(self.pasta_backup, "**", "metadata.json"),
+                recursive=True
+            )
+            numeros = []
+            for meta_file in meta_files:
+                try:
+                    with open(meta_file, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                    valor = int(data.get('numero_global') or data.get('numero') or 0)
+                    if valor:
+                        numeros.append(valor)
+                except Exception:
+                    continue
+            
+            # Compatibilidade com estrutura antiga (VOO_X na raiz)
+            pastas_antigas = glob.glob(os.path.join(self.pasta_backup, "VOO_*"))
+            for pasta in pastas_antigas:
+                try:
+                    valor = int(os.path.basename(pasta).split('_')[-1])
+                    numeros.append(valor)
+                except Exception:
+                    continue
+            
+            return max(numeros) + 1 if numeros else 1
+        except Exception as e:
+            self._log(f"Erro ao calcular número global: {e}", "warning")
+            return 1
+    
+    def _salvar_metadata_voo(self, extra=None):
+        """Atualiza arquivo de metadata do voo atual"""
+        if not self.pasta_voo_atual:
+            return
+        
+        try:
+            if self.metadata_voo is None:
+                self.metadata_voo = {}
+            if extra:
+                self.metadata_voo.update(extra)
+            
+            meta_path = os.path.join(self.pasta_voo_atual, "metadata.json")
+            with open(meta_path, 'w', encoding='utf-8') as f:
+                json.dump(self.metadata_voo, f, indent=2, ensure_ascii=False)
+        except Exception as e:
+            self._log(f"Erro ao salvar metadata do voo: {e}", "error")
+    
+    def _tentar_criptografar_log(self, arquivo_log):
+        """Aplica criptografia ao log se houver chave configurada"""
+        if not os.path.exists(arquivo_log):
+            return
+        if Fernet is None:
+            self._log("Biblioteca 'cryptography' não instalada; log não foi criptografado", "warning")
+            return
+        
+        chave_path = self.config.get('log_key_path') or os.path.join(os.path.expanduser("~"), ".cotesia_log.key")
+        if not os.path.exists(chave_path):
+            self._log("Chave de criptografia não encontrada (.cotesia_log.key)", "warning")
+            return
+        
+        try:
+            with open(chave_path, 'rb') as key_file:
+                chave = key_file.read().strip()
+            fernet = Fernet(chave)
+        except Exception as e:
+            self._log(f"Erro ao carregar chave de criptografia: {e}", "error")
+            return
+        
+        try:
+            with open(arquivo_log, 'rb') as f:
+                conteudo = f.read()
+            criptografado = fernet.encrypt(conteudo)
+            arquivo_encrypted = f"{arquivo_log}.enc"
+            with open(arquivo_encrypted, 'wb') as f:
+                f.write(criptografado)
+            os.remove(arquivo_log)
+            
+            arquivos = dict(self.metadata_voo.get('arquivos', {}))
+            arquivos['log'] = os.path.basename(arquivo_encrypted)
+            self._salvar_metadata_voo({
+                "log_encrypted": True,
+                "arquivos": arquivos
+            })
+            self._log("Log do voo criptografado com sucesso")
+        except Exception as e:
+            self._log(f"Erro ao criptografar log: {e}", "error")
     
     def iniciar_simulacao(self, velocidade_media=12):
         """

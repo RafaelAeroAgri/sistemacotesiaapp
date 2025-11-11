@@ -24,7 +24,7 @@ apt install -y python3-pip python3-serial python3-gpiozero git build-essential p
 
 echo ""
 echo "📦 Instalando bibliotecas Python via pip..."
-pip3 install pynmea2 pytz simplekml --break-system-packages
+pip3 install pynmea2 pytz simplekml cryptography --break-system-packages
 
 echo ""
 echo "🔧 Instalando pigpio do source..."
